@@ -94,11 +94,12 @@ class ClientApp(ctk.CTk):
             self.network.on_participants_updated = self.update_participant_list
             self.network.on_error = self.show_error
             
+            self.setup_main_ui()
+            
             self.network.start(ip)
             self.audio.start()
             
             self.is_connected = True
-            self.setup_main_ui()
             
             # Start sending audio loop
             threading.Thread(target=self.send_audio_loop, daemon=True).start()
@@ -119,6 +120,10 @@ class ClientApp(ctk.CTk):
                 break
 
     def update_participant_list(self, participants):
+        # UI updates must happen on the main thread
+        self.after(0, lambda: self._update_participant_list_ui(participants))
+
+    def _update_participant_list_ui(self, participants):
         # Clear frame
         for widget in self.scroll_participants.winfo_children():
             widget.destroy()

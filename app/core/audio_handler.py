@@ -38,10 +38,11 @@ class AudioHandler:
         # Capture
         if not self.muted:
             # Compress data before putting in queue for networking
-            #compressed = zlib.compress(indata.tobytes())
-            compressed = zlib.compress(bytes(indata))
-            #self.input_queue.put(indata.tobytes())
-            self.input_queue.put(bytes(indata))
+            try:
+                compressed = zlib.compress(bytes(indata))
+                self.input_queue.put(compressed)
+            except Exception as e:
+                print(f"[Audio] Capture error: {e}")
         
         # Playback
         mixed_audio = np.zeros((frames, self.channels), dtype='int16')
@@ -54,10 +55,22 @@ class AudioHandler:
                         # Decompress
                         decompressed = zlib.decompress(data)
                         peer_audio = np.frombuffer(decompressed, dtype='int16').reshape(-1, self.channels)
-                        # Avoid clipping by dividing by a factor (simple mixing)
+                        
+                        # Ensure shape matches (trim or pad if necessary)
+                        if peer_audio.shape[0] != frames:
+                            # print(f"[Audio] Resizing peer audio from {peer_audio.shape[0]} to {frames}")
+                            if peer_audio.shape[0] > frames:
+                                peer_audio = peer_audio[:frames]
+                            else:
+                                pad = np.zeros((frames - peer_audio.shape[0], self.channels), dtype='int16')
+                                peer_audio = np.vstack((peer_audio, pad))
+
+                        # Simple additive mixing
                         mixed_audio = np.add(mixed_audio, peer_audio // 2)
-                    except (queue.Empty, zlib.error):
+                    except queue.Empty:
                         pass
+                    except Exception as e:
+                        print(f"[Audio] Playback error for {username}: {e}")
         
         outdata[:] = mixed_audio.tobytes()
 

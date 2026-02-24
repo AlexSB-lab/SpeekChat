@@ -29,15 +29,16 @@ class NetworkEngine:
 
     def start(self, server_ip=None):
         self.is_running = True
+        
+        # Start receiving BEFORE sending join request
+        threading.Thread(target=self._receive_loop, daemon=True).start()
+
         if not self.is_server:
             if not server_ip:
                 raise ValueError("Server IP required for client mode")
             self.server_addr = (server_ip, self.PORT)
             # Send join request
             self._send_command("JOIN", self.username)
-        
-        threading.Thread(target=self._receive_loop, daemon=True).start()
-        if not self.is_server:
             threading.Thread(target=self._heartbeat_loop, daemon=True).start()
 
     def _receive_loop(self):
@@ -111,6 +112,12 @@ class NetworkEngine:
             username = payload[1:1+name_len].decode()
             audio_data = payload[1+name_len:]
             
+            # Debug: Print every 100th packet to avoid spam
+            if not hasattr(self, '_audio_count'): self._audio_count = 0
+            self._audio_count += 1
+            if self._audio_count % 100 == 0:
+                print(f"[Network] Received audio chunk from {username} ({len(audio_data)} bytes)")
+
             if self.on_audio_received:
                 self.on_audio_received(username, audio_data)
 

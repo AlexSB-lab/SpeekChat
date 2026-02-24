@@ -36,11 +36,17 @@ class ServerApp(ctk.CTk):
         self.label_port = ctk.CTkLabel(self.info_frame, text=f"Port: {self.network.PORT}")
         self.label_port.grid(row=2, column=0, padx=10, pady=5)
 
-        self.label_clients = ctk.CTkLabel(self, text="Participants: 0 / 30", font=("Roboto", 14))
-        self.label_clients.grid(row=2, column=0, padx=20, pady=20)
+        self.label_sidebar = ctk.CTkLabel(self, text="ACTIVE PARTICIPANTS", font=("Roboto", 12, "bold"), text_color="gray")
+        self.label_sidebar.grid(row=2, column=0, padx=20, pady=(20, 5), sticky="w")
+
+        self.scroll_participants = ctk.CTkScrollableFrame(self, height=100)
+        self.scroll_participants.grid(row=3, column=0, padx=20, pady=5, sticky="nsew")
+
+        self.label_clients = ctk.CTkLabel(self, text="Total: 0 / 30", font=("Roboto", 14))
+        self.label_clients.grid(row=4, column=0, padx=20, pady=5)
 
         self.btn_stop = ctk.CTkButton(self, text="Stop Server", command=self.on_closing, fg_color="red", hover_color="#AA0000")
-        self.btn_stop.grid(row=3, column=0, padx=20, pady=10)
+        self.btn_stop.grid(row=5, column=0, padx=20, pady=20)
 
     def start_server(self):
         try:
@@ -64,8 +70,18 @@ class ServerApp(ctk.CTk):
 
     def update_stats(self):
         if self.network.is_running:
-            count = len(self.network.clients)
-            self.label_clients.configure(text=f"Participants: {count} / 30")
+            participants = list(self.network.clients.values())
+            count = len(participants)
+            
+            self.label_clients.configure(text=f"Total: {count} / 30")
+            
+            # Update names list
+            for widget in self.scroll_participants.winfo_children():
+                widget.destroy()
+            for name in participants:
+                lbl = ctk.CTkLabel(self.scroll_participants, text=f"• {name}", font=("Roboto", 12))
+                lbl.pack(fill="x", padx=10, pady=1)
+                
             self.after(2000, self.update_stats)
 
     def on_closing(self):
