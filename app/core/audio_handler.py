@@ -52,6 +52,9 @@ class AudioHandler:
                 for username, q in list(self.output_queues.items()):
                     try:
                         data = q.get_nowait()
+                        if not data or len(data) < 2:
+                            continue
+                            
                         # Decompress
                         decompressed = zlib.decompress(data)
                         peer_audio = np.frombuffer(decompressed, dtype='int16').reshape(-1, self.channels)

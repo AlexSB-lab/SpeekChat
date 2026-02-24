@@ -92,12 +92,20 @@ class NetworkEngine:
             print(f"Command error: {e}")
 
     def _handle_audio(self, payload, addr):
+        # Payload here is data[1:]
+        if not payload.startswith(b'SPK!'):
+            return # Ignore non-audio or invalid packets
+
+        audio_payload = payload[4:]
+
         if self.is_server:
             # Relay to everyone else
-            # Inject sender name length and name into payload for clients
             sender_name = self.clients.get(addr, "Unknown")
             name_bytes = sender_name.encode()
-            relay_payload = bytes([1, len(name_bytes)]) + name_bytes + payload
+            
+            # Reconstruct: [1 (Type)] [b'SPK!'] [NameLen] [Name] [AudioData]
+            # audio_payload[1:] skips the dummy NameLen (0) sent by the client
+            relay_payload = bytes([1]) + b'SPK!' + bytes([len(name_bytes)]) + name_bytes + audio_payload[1:]
             
             for client_addr in list(self.clients.keys()):
                 if client_addr != addr:
@@ -106,18 +114,12 @@ class NetworkEngine:
                     except:
                         pass
         else:
-            # Client receives: [1 (Type)] [NameLen (1)] [Name] [AudioData]
-            # Actually the payload passed here is already without the first 1
-            name_len = payload[0]
-            username = payload[1:1+name_len].decode()
-            audio_data = payload[1+name_len:]
+            # Client receives: [b'SPK!'] [NameLen (1)] [Name] [AudioData]
+            # payload was data[1:], so it starts with b'SPK!'
+            name_len = audio_payload[0]
+            username = audio_payload[1:1+name_len].decode()
+            audio_data = audio_payload[1+name_len:]
             
-            # Debug: Print every 100th packet to avoid spam
-            if not hasattr(self, '_audio_count'): self._audio_count = 0
-            self._audio_count += 1
-            if self._audio_count % 100 == 0:
-                print(f"[Network] Received audio chunk from {username} ({len(audio_data)} bytes)")
-
             if self.on_audio_received:
                 self.on_audio_received(username, audio_data)
 
@@ -135,8 +137,8 @@ class NetworkEngine:
         if self.is_server: return # Server only relays
         if not self.server_addr: return
         
-        # Audio packet: [1 (Type)] [AudioData]
-        payload = bytes([1]) + data
+        # Audio packet: [1 (Type)] [b'SPK!'] [0 (Dummy NameLen)] [AudioData]
+        payload = bytes([1]) + b'SPK!' + bytes([0]) + data
         try:
             self.sock.sendto(payload, self.server_addr)
         except Exception as e:
