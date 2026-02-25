@@ -89,24 +89,33 @@ class ClientApp(ctk.CTk):
         self.username = self.entry_username.get()
         if not ip: return
         
+        # UI Feedback
+        self.btn_connect.configure(text="Connecting...", state="disabled")
+        self.entry_ip.configure(state="disabled")
+        self.entry_username.configure(state="disabled")
+
         try:
             self.network = NetworkEngine(is_server=False, username=self.username)
             self.network.on_audio_received = self.audio.receive_audio
             self.network.on_participants_updated = self.update_participant_list
+            self.network.on_connected = self.on_connected_confirmed
             self.network.on_error = self.show_error
             
-            self.setup_main_ui()
-            
             self.network.start(ip)
-            self.audio.start()
-            
-            self.is_connected = True
-            
-            # Start sending audio loop
-            threading.Thread(target=self.send_audio_loop, daemon=True).start()
             
         except Exception as e:
             self.show_error(str(e))
+
+    def on_connected_confirmed(self):
+        # Must be on main thread
+        self.after(0, self._on_connected_confirmed_ui)
+
+    def _on_connected_confirmed_ui(self):
+        self.is_connected = True
+        self.setup_main_ui()
+        self.audio.start()
+        # Start sending audio loop
+        threading.Thread(target=self.send_audio_loop, daemon=True).start()
 
     def send_audio_loop(self):
         while self.is_connected:
@@ -144,8 +153,23 @@ class ClientApp(ctk.CTk):
         self.btn_deafen.configure(text="✖️" if state else "🎧", fg_color="red" if state else ["#3b8ed0", "#1f538d"])
 
     def show_error(self, msg):
+        self.after(0, lambda: self._show_error_ui(msg))
+
+    def _show_error_ui(self, msg):
         print(f"Error: {msg}")
-        # Could show a popup here
+        self.is_connected = False
+        # If we were in login UI, reset button
+        if hasattr(self, 'btn_connect') and self.login_frame.winfo_exists():
+            self.btn_connect.configure(text="Connect", state="normal")
+            self.entry_ip.configure(state="normal")
+            self.entry_username.configure(state="normal")
+        
+        # We could add a label for errors here
+        if not hasattr(self, 'label_error'):
+            self.label_error = ctk.CTkLabel(self.login_frame, text=msg, text_color="red", font=("Roboto", 12))
+            self.label_error.pack(pady=5)
+        else:
+            self.label_error.configure(text=msg)
 
     def disconnect(self):
         self.is_connected = False

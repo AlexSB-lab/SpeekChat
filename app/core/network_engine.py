@@ -20,16 +20,24 @@ class NetworkEngine:
             self.sock.bind(('', self.PORT))
             self.clients = {} # (addr, port): username
         else:
+            # On Windows, we often need to bind even if we don't care about the port
+            # to avoid errors when starting to receive before sending anything.
+            try:
+                self.sock.bind(('', 0)) 
+            except:
+                pass
             self.server_addr = None
             self.participants = []
 
         self.on_audio_received = None # Callback(username, data)
         self.on_participants_updated = None # Callback(list)
+        self.on_connected = None # Callback()
         self.on_error = None # Callback(msg)
         self._stop_lock = threading.Lock()
 
     def start(self, server_ip=None):
         self.is_running = True
+        self._connected_event = threading.Event()
         
         # Start receiving BEFORE sending join request
         threading.Thread(target=self._receive_loop, daemon=True).start()
@@ -38,9 +46,31 @@ class NetworkEngine:
             if not server_ip:
                 raise ValueError("Server IP required for client mode")
             self.server_addr = (server_ip, self.PORT)
-            # Send join request
-            self._send_command("JOIN", self.username)
+            # Send join request in a loop until ACK or timeout
+            threading.Thread(target=self._join_loop, daemon=True).start()
             threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+
+    def _join_loop(self):
+        """Client-side loop to reliably join the server."""
+        attempts = 0
+        max_attempts = 15
+        while self.is_running and attempts < max_attempts:
+            print(f"[Network] Join attempt {attempts+1}/{max_attempts}...")
+            self._send_command("JOIN", self.username)
+            
+            # Wait for either PARTICIPANTS or JOIN_ACK via the event
+            if self._connected_event.wait(timeout=2.0):
+                print("[Network] Connection confirmed.")
+                if self.on_connected: self.on_connected()
+                return
+                
+            attempts += 1
+        
+        if self.is_running:
+            err = "Failed to connect to server (Timeout). Check IP and Port Forwarding."
+            print(f"[Network] {err}")
+            if self.on_error: self.on_error(err)
+            self.stop()
 
     def _receive_loop(self):
         while self.is_running:
@@ -83,6 +113,8 @@ class NetworkEngine:
                     username = args
                     self.clients[addr] = username
                     print(f"[Server] {username} joined from {addr}")
+                    # Send ACK immediately
+                    self._send_command_to("JOIN_ACK", None, addr)
                     self._broadcast_participants()
                 elif cmd == "LEAVE":
                     if addr in self.clients:
@@ -94,8 +126,14 @@ class NetworkEngine:
             else:
                 if cmd == "PARTICIPANTS":
                     self.participants = args
+                    if hasattr(self, '_connected_event'):
+                        self._connected_event.set()
                     if self.on_participants_updated:
                         self.on_participants_updated(self.participants)
+                elif cmd == "JOIN_ACK":
+                    print("[Network] Received JOIN_ACK from server.")
+                    if hasattr(self, '_connected_event'):
+                        self._connected_event.set()
         except Exception as e:
             print(f"Command error: {e}")
 
@@ -151,6 +189,16 @@ class NetworkEngine:
             self.sock.sendto(payload, self.server_addr)
         except Exception as e:
             print(f"Send audio error: {e}")
+
+    def _send_command_to(self, cmd, args, addr):
+        """Helper to send command to a specific address."""
+        try:
+            msg = json.dumps({"cmd": cmd, "args": args}).encode()
+            payload = bytes([0]) + msg
+            if self.sock:
+                self.sock.sendto(payload, addr)
+        except Exception as e:
+            print(f"Error sending command to {addr}: {e}")
 
     def _send_command(self, cmd, args):
         try:
