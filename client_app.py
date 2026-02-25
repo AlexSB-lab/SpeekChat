@@ -22,6 +22,7 @@ class ClientApp(ctk.CTk):
         
         self.is_connected = False
         
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.setup_login_ui()
 
     def setup_login_ui(self):

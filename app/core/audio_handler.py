@@ -100,7 +100,15 @@ class AudioHandler:
         self.deafened = state
 
     def stop(self):
-        self.is_running = False
-        if self.stream:
-            self.stream.stop()
-            self.stream.close()
+        with self._lock:
+            if not self.is_running:
+                return
+            self.is_running = False
+            
+            if self.stream:
+                try:
+                    self.stream.stop()
+                    self.stream.close()
+                except:
+                    pass
+                self.stream = None

@@ -1,32 +1,37 @@
+import customtkinter as ctk
+from server_app import ServerApp
+from client_app import ClientApp
 import sys
-import random
-from app.core.network import NetworkManager
-from app.core.audio import AudioEngine
-from app.core.comm import CommunicationBridge
-from app.gui.main_window import MainApp
+import os
 
-def main():
-    # In a real app, we'd have a login screen. For now, random name.
-    username = f"User_{random.randint(1000, 9999)}"
-    print(f"Starting SpeekChat as {username}...")
-    
-    # Initialize Core
-    nm = NetworkManager(username)
-    ae = AudioEngine()
-    cb = CommunicationBridge(nm, ae)
-    
-    # Start Cores
-    ae.start()
-    nm.start()
-    cb.start()
-    
-    # Start GUI
-    app = MainApp(nm, ae, cb)
-    app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    app.mainloop()
+class SpeekLauncher(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("SpeekChat Launcher")
+        self.geometry("300x250")
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+
+        self.label = ctk.CTkLabel(self, text="SpeekChat", font=("Roboto", 24, "bold"))
+        self.label.pack(pady=20)
+
+        self.btn_client = ctk.CTkButton(self, text="Start Client", command=self.start_client)
+        self.btn_client.pack(pady=10)
+
+        self.btn_server = ctk.CTkButton(self, text="Start Server", command=self.start_server)
+        self.btn_server.pack(pady=10)
+
+    def start_client(self):
+        self.destroy()
+        app = ClientApp()
+        app.mainloop()
+
+    def start_server(self):
+        self.destroy()
+        app = ServerApp()
+        app.mainloop()
 
 if __name__ == "__main__":
-    main()
-
-
-# install with pip venv: pip install -r requirements.txt
+    app = SpeekLauncher()
+    app.mainloop()

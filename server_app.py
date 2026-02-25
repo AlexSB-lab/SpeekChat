@@ -14,6 +14,7 @@ class ServerApp(ctk.CTk):
 
         self.network = NetworkEngine(is_server=True)
         
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.setup_ui()
         self.start_server()
 

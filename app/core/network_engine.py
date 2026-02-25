@@ -26,6 +26,7 @@ class NetworkEngine:
         self.on_audio_received = None # Callback(username, data)
         self.on_participants_updated = None # Callback(list)
         self.on_error = None # Callback(msg)
+        self._stop_lock = threading.Lock()
 
     def start(self, server_ip=None):
         self.is_running = True
@@ -59,10 +60,17 @@ class NetworkEngine:
                 elif msg_type == 1: # Audio
                     self._handle_audio(payload, addr)
 
+            except OSError as e:
+                if self.is_running:
+                    # Ignore common shutdown socket errors
+                    if e.errno not in [10022, 10038]:
+                        print(f"[Network] Receive error: {e}")
+                        if self.on_error: self.on_error(str(e))
+                break
             except Exception as e:
                 if self.is_running:
-                    print(f"[Network] Receive error: {e}")
-                    if self.on_error: self.on_error(str(e))
+                    print(f"[Network] Unexpected error: {e}")
+                    break
 
     def _handle_command(self, payload, addr):
         try:
@@ -145,14 +153,17 @@ class NetworkEngine:
             print(f"Send audio error: {e}")
 
     def _send_command(self, cmd, args):
-        msg = json.dumps({"cmd": cmd, "args": args}).encode()
-        payload = bytes([0]) + msg
-        if self.is_server:
-            # Server rarely sends commands to everyone except participants update
-            pass
-        else:
-            if self.server_addr:
-                self.sock.sendto(payload, self.server_addr)
+        try:
+            msg = json.dumps({"cmd": cmd, "args": args}).encode()
+            payload = bytes([0]) + msg
+            if self.is_server:
+                # Server rarely sends commands to everyone except participants update
+                pass
+            else:
+                if self.server_addr and self.sock:
+                    self.sock.sendto(payload, self.server_addr)
+        except (OSError, AttributeError):
+            pass # Socket likely closed or invalid during shutdown
 
     def _heartbeat_loop(self):
         while self.is_running:
@@ -160,10 +171,21 @@ class NetworkEngine:
             time.sleep(5)
 
     def stop(self):
-        self.is_running = False
-        if not self.is_server and self.server_addr:
-            self._send_command("LEAVE", self.username)
-        self.sock.close()
+        with self._stop_lock:
+            if not self.is_running:
+                return
+            self.is_running = False
+            
+            try:
+                if not self.is_server and self.server_addr:
+                    self._send_command("LEAVE", self.username)
+            except:
+                pass
+            
+            try:
+                self.sock.close()
+            except:
+                pass
 
     @staticmethod
     def get_public_ip():
