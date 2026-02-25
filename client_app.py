@@ -5,6 +5,7 @@ from app.core.network_engine import NetworkEngine
 from app.core.audio_handler import AudioHandler
 import sys
 import random
+import time
 
 class ClientApp(ctk.CTk):
     def __init__(self):
@@ -19,8 +20,8 @@ class ClientApp(ctk.CTk):
         self.username = f"User_{random.randint(1000, 9999)}"
         self.network = None
         self.audio = AudioHandler()
-        
         self.is_connected = False
+        self.participant_labels = {} # username: label_widget
         
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.setup_login_ui()
@@ -63,6 +64,7 @@ class ClientApp(ctk.CTk):
         
         self.label_my_name = ctk.CTkLabel(self.user_panel, text=self.username, font=("Roboto", 14, "bold"))
         self.label_my_name.pack(side="left", padx=10, pady=10)
+        self.participant_labels["Me"] = self.label_my_name
         
         self.btn_mute = ctk.CTkButton(self.user_panel, text="🎤", width=30, height=30, command=self.toggle_mute)
         self.btn_mute.pack(side="right", padx=5)
@@ -102,8 +104,9 @@ class ClientApp(ctk.CTk):
             
             self.is_connected = True
             
-            # Start sending audio loop
+            # Start loops
             threading.Thread(target=self.send_audio_loop, daemon=True).start()
+            self._refresh_speaking_states()
             
         except Exception as e:
             self.show_error(str(e))
@@ -128,10 +131,31 @@ class ClientApp(ctk.CTk):
         # Clear frame
         for widget in self.scroll_participants.winfo_children():
             widget.destroy()
+        
+        self.participant_labels = {"Me": self.label_my_name}
             
         for name in participants:
             lbl = ctk.CTkLabel(self.scroll_participants, text=f"• {name}", font=("Roboto", 14), anchor="w")
             lbl.pack(fill="x", padx=10, pady=2)
+            self.participant_labels[name] = lbl
+
+    def _refresh_speaking_states(self):
+        if not self.is_connected: return
+        
+        now = time.time()
+        for name, lbl in self.participant_labels.items():
+            last_spoke = self.audio.speaking_states.get(name, 0)
+            is_speaking = (now - last_spoke) < 0.3
+            
+            current_font = lbl.cget("font")
+            # In customtkinter, font can be a tuple or object. 
+            # We just force it based on state.
+            if is_speaking:
+                lbl.configure(font=("Roboto", 14, "bold"), text_color="#43b581") # Discord Green
+            else:
+                lbl.configure(font=("Roboto", 14), text_color="white")
+        
+        self.after(100, self._refresh_speaking_states)
 
     def toggle_mute(self):
         state = not self.audio.muted

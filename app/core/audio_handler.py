@@ -3,6 +3,7 @@ import numpy as np
 import threading
 import queue
 import zlib
+import time
 
 class AudioHandler:
     def __init__(self, sample_rate=16000, channels=1, chunk_size=1024):
@@ -17,6 +18,9 @@ class AudioHandler:
         self.stream = None
         self.muted = False
         self.deafened = False
+        
+        self.speaking_states = {} # username: timestamp
+        self.VAD_THRESHOLD = 500 # Adjust if needed
         
         self._lock = threading.Lock()
 
@@ -44,6 +48,15 @@ class AudioHandler:
             except Exception as e:
                 print(f"[Audio] Capture error: {e}")
         
+        # Simple VAD for local user
+        try:
+            audio_data = np.frombuffer(indata, dtype='int16').astype(np.float32)
+            rms = np.sqrt(np.mean(audio_data**2))
+            if rms > self.VAD_THRESHOLD:
+                self.speaking_states["Me"] = time.time()
+        except:
+            pass
+
         # Playback
         mixed_audio = np.zeros((frames, self.channels), dtype='int16')
         
@@ -57,8 +70,15 @@ class AudioHandler:
                             
                         # Decompress
                         decompressed = zlib.decompress(data)
-                        peer_audio = np.frombuffer(decompressed, dtype='int16').reshape(-1, self.channels)
+                        peer_raw = np.frombuffer(decompressed, dtype='int16').astype(np.float32)
                         
+                        # VAD for peer
+                        rms = np.sqrt(np.mean(peer_raw**2))
+                        if rms > self.VAD_THRESHOLD:
+                            self.speaking_states[username] = time.time()
+
+                        peer_audio = peer_raw.astype(np.int16).reshape(-1, self.channels)
+
                         # Ensure shape matches (trim or pad if necessary)
                         if peer_audio.shape[0] != frames:
                             # print(f"[Audio] Resizing peer audio from {peer_audio.shape[0]} to {frames}")
