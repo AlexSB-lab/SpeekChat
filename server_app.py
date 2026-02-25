@@ -8,7 +8,7 @@ class ServerApp(ctk.CTk):
         super().__init__()
 
         self.title("SpeekChat Server")
-        self.geometry("400x300")
+        self.geometry("400x600")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
